@@ -2345,7 +2345,6 @@
                     }
                 });
             }
-
             function renderCategoryChips() {
                 const wrap = document.getElementById('categoryChipsWrap');
                 if (!wrap) return;
@@ -2630,6 +2629,7 @@
                 tempSelectedFuels = [];
                 renderFuelModalList();
             }
+
             function exportToExcel() {
                 if (!cachedData || !cachedData.vehicles) {
                     showToast('暂无数据可导出', 'fa-triangle-exclamation');
@@ -2655,6 +2655,7 @@
                     return;
                 }
 
+                // 排序：先分行，再车型
                 const sortedVehicles = [...filteredVehicles].sort((a, b) => {
                     const plantA = (a.plant || '-').toString();
                     const plantB = (b.plant || '-').toString();
@@ -2709,8 +2710,32 @@
                 });
                 exportData.push(headerRow3);
 
+                let lastPlant = null;
+                let lastType = null;
+                let plantSubtotals = {};
+                let typeSubtotals = {};
+                let categoryTotals = {};
+
                 sortedVehicles.forEach(v => {
-                    const row = [v.vehicle || '-', v.plant || '-', getTypeCombo(v), v.fuel || '-'];
+                    const plant = v.plant || '-';
+                    const type = getTypeCombo(v);
+
+                    // 分行变化时
+                    if (lastPlant !== null && plant !== lastPlant) {
+                        // 输出上一个车型小计
+                        if (lastType !== null) {
+                            exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
+                        }
+                        // 输出上一个分行小计
+                        exportData.push(generateSubtotalRow('分行小计', lastPlant, '', displayMonths, plantSubtotals[lastPlant]));
+                    }
+                    // 车型变化时（同一分行内）
+                    else if (lastType !== null && type !== lastType) {
+                        exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
+                    }
+
+                    // 输出车辆数据
+                    const row = [v.vehicle || '-', plant, type, v.fuel || '-'];
                     displayMonths.forEach(m => {
                         exportCats.forEach(cat => {
                             valueTypes.forEach(vt => {
@@ -2719,12 +2744,116 @@
                         });
                     });
                     exportData.push(row);
+
+                    // 累计分行小计
+                    if (!plantSubtotals[plant]) {
+                        plantSubtotals[plant] = {};
+                        displayMonths.forEach(m => {
+                            plantSubtotals[plant][m] = {};
+                            exportCats.forEach(cat => { plantSubtotals[plant][m][cat] = { rm: 0, liter: 0 }; });
+                        });
+                    }
+                    displayMonths.forEach(m => {
+                        exportCats.forEach(cat => {
+                            plantSubtotals[plant][m][cat].rm += getVal(v, m, cat, true);
+                            plantSubtotals[plant][m][cat].liter += getVal(v, m, cat, false);
+                        });
+                    });
+
+                    // 累计车型小计
+                    const typeKey = plant + '|||' + type;
+                    if (!typeSubtotals[typeKey]) {
+                        typeSubtotals[typeKey] = {};
+                        displayMonths.forEach(m => {
+                            typeSubtotals[typeKey][m] = {};
+                            exportCats.forEach(cat => { typeSubtotals[typeKey][m][cat] = { rm: 0, liter: 0 }; });
+                        });
+                    }
+                    displayMonths.forEach(m => {
+                        exportCats.forEach(cat => {
+                            typeSubtotals[typeKey][m][cat].rm += getVal(v, m, cat, true);
+                            typeSubtotals[typeKey][m][cat].liter += getVal(v, m, cat, false);
+                        });
+                    });
+
+                    // 累计类别总计
+                    exportCats.forEach(cat => {
+                        if (!categoryTotals[cat]) categoryTotals[cat] = { rm: 0, liter: 0 };
+                        displayMonths.forEach(m => {
+                            categoryTotals[cat].rm += getVal(v, m, cat, true);
+                            categoryTotals[cat].liter += getVal(v, m, cat, false);
+                        });
+                    });
+
+                    lastPlant = plant;
+                    lastType = type;
                 });
+
+                // 输出最后一个车型小计和分行小计
+                if (lastType !== null && lastPlant !== null) {
+                    exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
+                }
+                if (lastPlant !== null) {
+                    exportData.push(generateSubtotalRow('分行小计', lastPlant, '', displayMonths, plantSubtotals[lastPlant]));
+                }
+
+                exportData.push([]);
+
+                // 输出各类别总计
+                exportCats.forEach(cat => {
+                    exportData.push(generateGrandRow(cat + ' 总计', displayMonths, cat, categoryTotals[cat]));
+                });
+
+                exportData.push([]);
+
+                // 输出所有类别总计
+                const allCatsTotal = { rm: 0, liter: 0 };
+                exportCats.forEach(cat => {
+                    if (categoryTotals[cat]) {
+                        allCatsTotal.rm += categoryTotals[cat].rm;
+                        allCatsTotal.liter += categoryTotals[cat].liter;
+                    }
+                });
+                exportData.push(generateGrandRow('所有类别总计', displayMonths, null, allCatsTotal));
+
+                function generateSubtotalRow(label, plant, type, months, subtotalData) {
+                    const row = [label, plant || '', '', type || ''];
+                    months.forEach(m => {
+                        exportCats.forEach(cat => {
+                            valueTypes.forEach(vt => {
+                                const sd = subtotalData && subtotalData[m] && subtotalData[m][cat];
+                                row.push(sd ? (vt.key === 'rm' ? sd.rm : sd.liter) : 0);
+                            });
+                        });
+                    });
+                    return row;
+                }
+
+                function generateGrandRow(label, months, cat, totalData) {
+                    const row = [label, '', '', ''];
+                    months.forEach(m => {
+                        if (cat) {
+                            valueTypes.forEach(vt => {
+                                row.push(totalData ? (vt.key === 'rm' ? totalData.rm : totalData.liter) : 0);
+                            });
+                        } else {
+                            exportCats.forEach(c => {
+                                valueTypes.forEach(vt => {
+                                    row.push(totalData ? (vt.key === 'rm' ? totalData.rm : totalData.liter) : 0);
+                                });
+                            });
+                        }
+                    });
+                    return row;
+                }
 
                 const wb = XLSX.utils.book_new();
                 const ws = XLSX.utils.aoa_to_sheet(exportData);
 
                 const fixedCols = 4;
+                const totalCols = fixedCols + displayMonths.reduce((sum, m) => sum + exportCats.length * valueTypes.length, 0);
+                const totalRows = exportData.length;
+
                 const colWidths = [{ wch: 18 }, { wch: 20 }, { wch: 20 }, { wch: 14 }];
                 displayMonths.forEach(m => {
                     exportCats.forEach(cat => {
@@ -2750,6 +2879,17 @@
                     colOffset += span;
                 });
                 ws['!merges'] = merges;
+
+                ws['!freeze'] = { xSplit: fixedCols, ySplit: 3, topLeftCell: XLSX.utils.encode_cell({ r: 3, c: fixedCols }), activePane: 'bottomRight', state: 'frozen' };
+
+                for (let r = 3; r < totalRows; r++) {
+                    for (let c = fixedCols; c < totalCols; c++) {
+                        const cellRef = XLSX.utils.encode_cell({ r: r, c: c });
+                        if (ws[cellRef] && typeof ws[cellRef].v === 'number') {
+                            ws[cellRef].z = '#,##0.00';
+                        }
+                    }
+                }
 
                 XLSX.utils.book_append_sheet(wb, ws, '燃油数据');
 
@@ -3558,6 +3698,23 @@
                     return;
                 }
 
+                // 排序：先分行，再车型
+                const sortedVehicles = [...filteredVehicles].sort((a, b) => {
+                    const plantA = (a.plant || '-').toString();
+                    const plantB = (b.plant || '-').toString();
+                    if (plantA !== plantB) return plantA.localeCompare(plantB);
+                    const typeA = getTypeCombo(a);
+                    const typeB = getTypeCombo(b);
+                    return typeA.localeCompare(typeB);
+                });
+
+                function getVal(v, m, cat) {
+                    const md = v.months[m];
+                    if (!md) return 0;
+                    const val = md[cat];
+                    return val || 0;
+                }
+
                 const exportData = [];
                 const exportCats = summaryCategories;
 
@@ -3574,15 +3731,117 @@
                 });
                 exportData.push(headerRow2);
 
-                filteredVehicles.forEach(v => {
-                    const row = [v.vehicle || '-', v.plant || '-', getTypeCombo(v), v.fuel || '-'];
+                let lastPlant = null;
+                let lastType = null;
+                let plantSubtotals = {};
+                let typeSubtotals = {};
+                let categoryTotals = {};
+
+                sortedVehicles.forEach(v => {
+                    const plant = v.plant || '-';
+                    const type = getTypeCombo(v);
+
+                    // 分行变化时
+                    if (lastPlant !== null && plant !== lastPlant) {
+                        if (lastType !== null) {
+                            exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
+                        }
+                        exportData.push(generateSubtotalRow('分行小计', lastPlant, '', displayMonths, plantSubtotals[lastPlant]));
+                    }
+                    // 车型变化时（同一分行内）
+                    else if (lastType !== null && type !== lastType) {
+                        exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
+                    }
+
+                    // 输出车辆数据
+                    const row = [v.vehicle || '-', plant, type, v.fuel || '-'];
                     displayMonths.forEach(m => {
                         exportCats.forEach(cat => {
-                            row.push(getSummaryValue(v, m, cat));
+                            row.push(getVal(v, m, cat));
                         });
                     });
                     exportData.push(row);
+
+                    // 累计分行小计
+                    if (!plantSubtotals[plant]) {
+                        plantSubtotals[plant] = {};
+                        displayMonths.forEach(m => {
+                            plantSubtotals[plant][m] = {};
+                            exportCats.forEach(cat => { plantSubtotals[plant][m][cat] = 0; });
+                        });
+                    }
+                    displayMonths.forEach(m => {
+                        exportCats.forEach(cat => {
+                            plantSubtotals[plant][m][cat] += getVal(v, m, cat);
+                        });
+                    });
+
+                    // 累计车型小计
+                    const typeKey = plant + '|||' + type;
+                    if (!typeSubtotals[typeKey]) {
+                        typeSubtotals[typeKey] = {};
+                        displayMonths.forEach(m => {
+                            typeSubtotals[typeKey][m] = {};
+                            exportCats.forEach(cat => { typeSubtotals[typeKey][m][cat] = 0; });
+                        });
+                    }
+                    displayMonths.forEach(m => {
+                        exportCats.forEach(cat => {
+                            typeSubtotals[typeKey][m][cat] += getVal(v, m, cat);
+                        });
+                    });
+
+                    // 累计类别总计
+                    exportCats.forEach(cat => {
+                        if (!categoryTotals[cat]) categoryTotals[cat] = {};
+                        displayMonths.forEach(m => {
+                            categoryTotals[cat][m] = (categoryTotals[cat][m] || 0) + getVal(v, m, cat);
+                        });
+                    });
+
+                    lastPlant = plant;
+                    lastType = type;
                 });
+
+                // 输出最后一个车型小计和分行小计
+                if (lastType !== null && lastPlant !== null) {
+                    exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
+                }
+                if (lastPlant !== null) {
+                    exportData.push(generateSubtotalRow('分行小计', lastPlant, '', displayMonths, plantSubtotals[lastPlant]));
+                }
+
+                exportData.push([]);
+
+                // 输出各类别总计
+                exportCats.forEach(cat => {
+                    exportData.push(generateGrandRow(cat + ' 总计', displayMonths, cat, categoryTotals[cat]));
+                });
+
+                function generateSubtotalRow(label, plant, type, months, subtotalData) {
+                    const row = [label, plant || '', '', type || ''];
+                    months.forEach(m => {
+                        exportCats.forEach(cat => {
+                            const sd = subtotalData && subtotalData[m] && subtotalData[m][cat];
+                            row.push(sd || 0);
+                        });
+                    });
+                    return row;
+                }
+
+                function generateGrandRow(label, months, cat, totalData) {
+                    const row = [label, '', '', ''];
+                    months.forEach(m => {
+                        if (cat) {
+                            row.push(totalData && totalData[m] ? totalData[m] : 0);
+                        } else {
+                            exportCats.forEach(c => {
+                                row.push(totalData && totalData[m] ? totalData[m] : 0);
+                            });
+                        }
+                    });
+                    return row;
+                }
 
                 const wb = XLSX.utils.book_new();
                 const ws = XLSX.utils.aoa_to_sheet(exportData);
@@ -4274,6 +4533,23 @@
                     return;
                 }
 
+                // 排序：先分行，再车型
+                const sortedVehicles = [...filteredVehicles].sort((a, b) => {
+                    const plantA = (a.plant || '-').toString();
+                    const plantB = (b.plant || '-').toString();
+                    if (plantA !== plantB) return plantA.localeCompare(plantB);
+                    const typeA = getTypeCombo(a);
+                    const typeB = getTypeCombo(b);
+                    return typeA.localeCompare(typeB);
+                });
+
+                function getVal(v, m, cat) {
+                    const md = v.months[m];
+                    if (!md) return 0;
+                    const val = md[cat];
+                    return val || 0;
+                }
+
                 const exportData = [];
                 const exportCats = monitoringCategories;
 
@@ -4290,15 +4566,108 @@
                 });
                 exportData.push(headerRow2);
 
-                filteredVehicles.forEach(v => {
-                    const row = [v.vehicle || '-', v.plant || '-', getTypeCombo(v), v.fuel || '-'];
+                let lastPlant = null;
+                let lastType = null;
+                let plantSubtotals = {};
+                let typeSubtotals = {};
+                let categoryTotals = {};
+
+                sortedVehicles.forEach(v => {
+                    const plant = v.plant || '-';
+                    const type = getTypeCombo(v);
+
+                    if (lastPlant !== null && plant !== lastPlant) {
+                        if (lastType !== null) {
+                            exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
+                        }
+                        exportData.push(generateSubtotalRow('分行小计', lastPlant, '', displayMonths, plantSubtotals[lastPlant]));
+                    } else if (lastType !== null && type !== lastType) {
+                        exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
+                    }
+
+                    const row = [v.vehicle || '-', plant, type, v.fuel || '-'];
                     displayMonths.forEach(m => {
                         exportCats.forEach(cat => {
-                            row.push(getMonitoringValue(v, m, cat));
+                            row.push(getVal(v, m, cat));
                         });
                     });
                     exportData.push(row);
+
+                    if (!plantSubtotals[plant]) {
+                        plantSubtotals[plant] = {};
+                        displayMonths.forEach(m => {
+                            plantSubtotals[plant][m] = {};
+                            exportCats.forEach(cat => { plantSubtotals[plant][m][cat] = 0; });
+                        });
+                    }
+                    displayMonths.forEach(m => {
+                        exportCats.forEach(cat => {
+                            plantSubtotals[plant][m][cat] += getVal(v, m, cat);
+                        });
+                    });
+
+                    const typeKey = plant + '|||' + type;
+                    if (!typeSubtotals[typeKey]) {
+                        typeSubtotals[typeKey] = {};
+                        displayMonths.forEach(m => {
+                            typeSubtotals[typeKey][m] = {};
+                            exportCats.forEach(cat => { typeSubtotals[typeKey][m][cat] = 0; });
+                        });
+                    }
+                    displayMonths.forEach(m => {
+                        exportCats.forEach(cat => {
+                            typeSubtotals[typeKey][m][cat] += getVal(v, m, cat);
+                        });
+                    });
+
+                    exportCats.forEach(cat => {
+                        if (!categoryTotals[cat]) categoryTotals[cat] = {};
+                        displayMonths.forEach(m => {
+                            categoryTotals[cat][m] = (categoryTotals[cat][m] || 0) + getVal(v, m, cat);
+                        });
+                    });
+
+                    lastPlant = plant;
+                    lastType = type;
                 });
+
+                if (lastType !== null && lastPlant !== null) {
+                    exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
+                }
+                if (lastPlant !== null) {
+                    exportData.push(generateSubtotalRow('分行小计', lastPlant, '', displayMonths, plantSubtotals[lastPlant]));
+                }
+
+                exportData.push([]);
+
+                exportCats.forEach(cat => {
+                    exportData.push(generateGrandRow(cat + ' 总计', displayMonths, cat, categoryTotals[cat]));
+                });
+
+                function generateSubtotalRow(label, plant, type, months, subtotalData) {
+                    const row = [label, plant || '', '', type || ''];
+                    months.forEach(m => {
+                        exportCats.forEach(cat => {
+                            const sd = subtotalData && subtotalData[m] && subtotalData[m][cat];
+                            row.push(sd || 0);
+                        });
+                    });
+                    return row;
+                }
+
+                function generateGrandRow(label, months, cat, totalData) {
+                    const row = [label, '', '', ''];
+                    months.forEach(m => {
+                        if (cat) {
+                            row.push(totalData && totalData[m] ? totalData[m] : 0);
+                        } else {
+                            exportCats.forEach(c => {
+                                row.push(totalData && totalData[m] ? totalData[m] : 0);
+                            });
+                        }
+                    });
+                    return row;
+                }
 
                 const wb = XLSX.utils.book_new();
                 const ws = XLSX.utils.aoa_to_sheet(exportData);
