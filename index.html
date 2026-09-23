@@ -343,6 +343,7 @@
             display: flex;
             gap: 20px;
             margin-bottom: 28px;
+            flex-wrap: wrap;
         }
         .chart-panel {
             background: white;
@@ -360,6 +361,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            flex-wrap: wrap;
         }
         .chart-panel .panel-title i {
             color: #2a7de1;
@@ -1406,6 +1408,19 @@
                     <div class="chart-canvas-wrap"><canvas id="monitoringPieChart"></canvas></div>
                 </div>
             </div>
+            <div class="charts-row">
+                <div class="chart-panel" id="monitoringCostPanel">
+                    <div class="panel-title">
+                        <i class="fa-solid fa-arrow-trend-down"></i> 成本变化检测（与前一个月比较）
+                        <div class="rank-toggle-group" id="monitoringCostToggleGroup">
+                            <button class="rank-toggle-btn active-rm" data-mcost="rm">RM</button>
+                            <button class="rank-toggle-btn active-liter" data-mcost="liter">Liter</button>
+                        </div>
+                    </div>
+                    <div id="monitoringCostSummary" style="margin-bottom:12px;font-size:0.78rem;color:#4a5a6e;"></div>
+                    <ul class="rank-list" id="monitoringCostList" style="max-height:420px;"></ul>
+                </div>
+            </div>
             <div class="table-container">
                 <div class="table-scroll-wrapper">
                     <table class="sticky-table" id="monitoringTable">
@@ -1699,6 +1714,7 @@
             let monitoringCategories = [...MONITORING_CATEGORIES];
             let monitoringLineShow = { actual_fuel: true, fuel_expense: true };
             let monitoringRankType = 'actual_fuel_high';
+            let monitoringCostType = 'rm';
             let monitoringTrendChart = null;
             let monitoringPieChart = null;
             let monitoringYearOptionsBuilt = false;
@@ -2655,7 +2671,6 @@
                     return;
                 }
 
-                // 排序：先分行，再车型
                 const sortedVehicles = [...filteredVehicles].sort((a, b) => {
                     const plantA = (a.plant || '-').toString();
                     const plantB = (b.plant || '-').toString();
@@ -2720,21 +2735,16 @@
                     const plant = v.plant || '-';
                     const type = getTypeCombo(v);
 
-                    // 分行变化时
                     if (lastPlant !== null && plant !== lastPlant) {
-                        // 输出上一个车型小计
                         if (lastType !== null) {
                             exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
                         }
-                        // 输出上一个分行小计
                         exportData.push(generateSubtotalRow('分行小计', lastPlant, '', displayMonths, plantSubtotals[lastPlant]));
                     }
-                    // 车型变化时（同一分行内）
                     else if (lastType !== null && type !== lastType) {
                         exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
                     }
 
-                    // 输出车辆数据
                     const row = [v.vehicle || '-', plant, type, v.fuel || '-'];
                     displayMonths.forEach(m => {
                         exportCats.forEach(cat => {
@@ -2745,7 +2755,6 @@
                     });
                     exportData.push(row);
 
-                    // 累计分行小计
                     if (!plantSubtotals[plant]) {
                         plantSubtotals[plant] = {};
                         displayMonths.forEach(m => {
@@ -2760,7 +2769,6 @@
                         });
                     });
 
-                    // 累计车型小计
                     const typeKey = plant + '|||' + type;
                     if (!typeSubtotals[typeKey]) {
                         typeSubtotals[typeKey] = {};
@@ -2776,7 +2784,6 @@
                         });
                     });
 
-                    // 累计类别总计
                     exportCats.forEach(cat => {
                         if (!categoryTotals[cat]) categoryTotals[cat] = { rm: 0, liter: 0 };
                         displayMonths.forEach(m => {
@@ -2789,7 +2796,6 @@
                     lastType = type;
                 });
 
-                // 输出最后一个车型小计和分行小计
                 if (lastType !== null && lastPlant !== null) {
                     exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
                 }
@@ -2799,14 +2805,12 @@
 
                 exportData.push([]);
 
-                // 输出各类别总计
                 exportCats.forEach(cat => {
                     exportData.push(generateGrandRow(cat + ' 总计', displayMonths, cat, categoryTotals[cat]));
                 });
 
                 exportData.push([]);
 
-                // 输出所有类别总计
                 const allCatsTotal = { rm: 0, liter: 0 };
                 exportCats.forEach(cat => {
                     if (categoryTotals[cat]) {
@@ -3698,7 +3702,6 @@
                     return;
                 }
 
-                // 排序：先分行，再车型
                 const sortedVehicles = [...filteredVehicles].sort((a, b) => {
                     const plantA = (a.plant || '-').toString();
                     const plantB = (b.plant || '-').toString();
@@ -3741,19 +3744,16 @@
                     const plant = v.plant || '-';
                     const type = getTypeCombo(v);
 
-                    // 分行变化时
                     if (lastPlant !== null && plant !== lastPlant) {
                         if (lastType !== null) {
                             exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
                         }
                         exportData.push(generateSubtotalRow('分行小计', lastPlant, '', displayMonths, plantSubtotals[lastPlant]));
                     }
-                    // 车型变化时（同一分行内）
                     else if (lastType !== null && type !== lastType) {
                         exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
                     }
 
-                    // 输出车辆数据
                     const row = [v.vehicle || '-', plant, type, v.fuel || '-'];
                     displayMonths.forEach(m => {
                         exportCats.forEach(cat => {
@@ -3762,7 +3762,6 @@
                     });
                     exportData.push(row);
 
-                    // 累计分行小计
                     if (!plantSubtotals[plant]) {
                         plantSubtotals[plant] = {};
                         displayMonths.forEach(m => {
@@ -3776,7 +3775,6 @@
                         });
                     });
 
-                    // 累计车型小计
                     const typeKey = plant + '|||' + type;
                     if (!typeSubtotals[typeKey]) {
                         typeSubtotals[typeKey] = {};
@@ -3791,7 +3789,6 @@
                         });
                     });
 
-                    // 累计类别总计
                     exportCats.forEach(cat => {
                         if (!categoryTotals[cat]) categoryTotals[cat] = {};
                         displayMonths.forEach(m => {
@@ -3803,7 +3800,6 @@
                     lastType = type;
                 });
 
-                // 输出最后一个车型小计和分行小计
                 if (lastType !== null && lastPlant !== null) {
                     exportData.push(generateSubtotalRow('车型小计', '', lastType, displayMonths, typeSubtotals[lastPlant + '|||' + lastType]));
                 }
@@ -3813,7 +3809,6 @@
 
                 exportData.push([]);
 
-                // 输出各类别总计
                 exportCats.forEach(cat => {
                     exportData.push(generateGrandRow(cat + ' 总计', displayMonths, cat, categoryTotals[cat]));
                 });
@@ -4322,6 +4317,175 @@
                 });
             }
 
+            // ==================== 成本变化检测 ====================
+            function getMonitoringCostData(vehicles, regularMonths) {
+                let monthsToUse = regularMonths;
+                if (monitoringMonth !== '全部') {
+                    monthsToUse = regularMonths.filter(m => extractMonthAbbr(m) === monitoringMonth);
+                    if (monitoringYear !== '全部') {
+                        monthsToUse = monthsToUse.filter(m => extractYear(m) === monitoringYear);
+                    }
+                } else if (monitoringYear !== '全部') {
+                    monthsToUse = regularMonths.filter(m => extractYear(m) === monitoringYear);
+                }
+
+                const sortedMonths = [...monthsToUse].sort((a, b) => {
+                    const ya = extractYear(a), yb = extractYear(b);
+                    if (ya !== yb) return ya.localeCompare(yb);
+                    return monthSortKey(extractMonthAbbr(a)) - monthSortKey(extractMonthAbbr(b));
+                });
+
+                const monthly = sortedMonths.map(m => {
+                    let liter = 0, expense = 0;
+                    vehicles.forEach(v => {
+                        liter += getMonitoringValue(v, m, 'Actual Fuel Usage');
+                        expense += getMonitoringValue(v, m, 'Fuel Expense');
+                    });
+                    const price = liter > 0 ? expense / liter : 0;
+                    return { month: m, liter, expense, price };
+                });
+
+                const rows = [];
+                for (let i = 1; i < monthly.length; i++) {
+                    const prev = monthly[i - 1];
+                    const curr = monthly[i];
+
+                    const deltaCost = curr.expense - prev.expense;
+                    const deltaRate = prev.expense !== 0 ? (deltaCost / prev.expense) * 100 : 0;
+
+                    const deltaPrice = curr.price - prev.price;
+                    const deltaPriceRate = prev.price !== 0 ? (deltaPrice / prev.price) * 100 : 0;
+
+                    const priceEffect = (curr.price - prev.price) * prev.liter;
+                    const volumeEffect = prev.price * (curr.liter - prev.liter);
+                    const crossEffect = (curr.price - prev.price) * (curr.liter - prev.liter);
+
+                    rows.push({
+                        month: curr.month,
+                        prevMonth: prev.month,
+                        prevCost: prev.expense,
+                        currCost: curr.expense,
+                        deltaCost,
+                        deltaRate,
+                        prevLiter: prev.liter,
+                        currLiter: curr.liter,
+                        prevPrice: prev.price,
+                        currPrice: curr.price,
+                        deltaPrice,
+                        deltaPriceRate,
+                        priceEffect,
+                        volumeEffect,
+                        crossEffect
+                    });
+                }
+
+                return { monthly, rows };
+            }
+
+            function updateMonitoringCostToggleUI() {
+                const group = document.getElementById('monitoringCostToggleGroup');
+                if (!group) return;
+                group.querySelectorAll('.rank-toggle-btn').forEach(b => {
+                    b.className = 'rank-toggle-btn ' + (b.dataset.mcost === monitoringCostType
+                        ? (monitoringCostType === 'rm' ? 'active-rm' : 'active-liter')
+                        : '');
+                });
+            }
+
+            function updateMonitoringCostPanel(vehicles, regularMonths) {
+                const summaryEl = document.getElementById('monitoringCostSummary');
+                const listEl = document.getElementById('monitoringCostList');
+                if (!summaryEl || !listEl) return;
+
+                const { monthly, rows } = getMonitoringCostData(vehicles, regularMonths);
+
+                if (monthly.length < 2) {
+                    summaryEl.innerHTML = '<i class="fa-solid fa-circle-info"></i> 数据不足两个月，无法比较';
+                    listEl.innerHTML = '<li class="rank-empty"><i class="fa-solid fa-box-open"></i> 暂无数据</li>';
+                    updateMonitoringCostToggleUI();
+                    return;
+                }
+
+                const latest = rows[rows.length - 1];
+                const totalDelta = latest.deltaCost;
+                const totalRate = latest.deltaRate;
+                const trendIcon = totalDelta > 0 ? 'fa-arrow-up' : (totalDelta < 0 ? 'fa-arrow-down' : 'fa-minus');
+                const trendColor = totalDelta > 0 ? '#ef4444' : (totalDelta < 0 ? '#1f8b6b' : '#8a9bb5');
+                const trendText = totalDelta > 0 ? '成本上升' : (totalDelta < 0 ? '成本下降' : '成本持平');
+
+                summaryEl.innerHTML = `
+                    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;">
+                        <span style="font-weight:700;color:${trendColor};">
+                            <i class="fa-solid ${trendIcon}"></i> ${trendText}
+                        </span>
+                        <span>最新月：<b>${latest.month}</b></span>
+                        <span>成本变化：<b style="color:${trendColor};">${totalDelta >= 0 ? '+' : ''}RM ${fmtComma(Math.abs(totalDelta))}</b></span>
+                        <span>变化率：<b style="color:${trendColor};">${totalRate >= 0 ? '+' : ''}${totalRate.toFixed(2)}%</b></span>
+                    </div>
+                `;
+
+                let html = '';
+                const displayRows = [...rows].reverse();
+                displayRows.forEach(r => {
+                    const delta = r.deltaCost;
+                    const color = delta > 0 ? '#ef4444' : (delta < 0 ? '#1f8b6b' : '#8a9bb5');
+                    const icon = delta > 0 ? 'fa-arrow-up' : (delta < 0 ? 'fa-arrow-down' : 'fa-minus');
+                    const sign = delta >= 0 ? '+' : '-';
+                    const absDelta = Math.abs(delta);
+
+                    const isReduced = delta < 0;
+                    const reduceTag = isReduced
+                        ? '<span style="background:#e6f7f0;color:#1f8b6b;padding:1px 8px;border-radius:20px;font-size:0.68rem;font-weight:600;">已缩减</span>'
+                        : (delta > 0
+                            ? '<span style="background:#fdecec;color:#ef4444;padding:1px 8px;border-radius:20px;font-size:0.68rem;font-weight:600;">未缩减</span>'
+                            : '<span style="background:#eef2f8;color:#8a9bb5;padding:1px 8px;border-radius:20px;font-size:0.68rem;font-weight:600;">持平</span>');
+
+                    const priceEffectColor = r.priceEffect > 0 ? '#ef4444' : (r.priceEffect < 0 ? '#1f8b6b' : '#8a9bb5');
+                    const volumeEffectColor = r.volumeEffect > 0 ? '#ef4444' : (r.volumeEffect < 0 ? '#1f8b6b' : '#8a9bb5');
+
+                    const priceSign = r.priceEffect >= 0 ? '+' : '-';
+                    const volumeSign = r.volumeEffect >= 0 ? '+' : '-';
+                    const crossSign = r.crossEffect >= 0 ? '+' : '-';
+
+                    // 单位油价变化
+                    const priceDeltaColor = r.deltaPrice > 0 ? '#ef4444' : (r.deltaPrice < 0 ? '#1f8b6b' : '#8a9bb5');
+                    const priceDeltaIcon = r.deltaPrice > 0 ? 'fa-arrow-up' : (r.deltaPrice < 0 ? 'fa-arrow-down' : 'fa-minus');
+                    const priceDeltaSign = r.deltaPrice >= 0 ? '+' : '-';
+
+                    html += `
+                    <li class="rank-item" style="flex-direction:column;align-items:stretch;gap:6px;padding:10px 12px;">
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <span style="font-weight:700;font-size:0.82rem;color:#1e3a5f;">${r.month}</span>
+                            <span style="font-size:0.7rem;color:#8a9bb5;">vs ${r.prevMonth}</span>
+                            ${reduceTag}
+                            <span style="margin-left:auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                                <span style="font-weight:700;color:${color};font-size:0.82rem;">
+                                    <i class="fa-solid ${icon}"></i> ${sign}RM ${fmtComma(absDelta)}
+                                    <span style="font-size:0.7rem;">(${sign}${Math.abs(r.deltaRate).toFixed(2)}%)</span>
+                                </span>
+                                <span style="font-weight:700;color:${priceDeltaColor};font-size:0.82rem;">
+                                    <i class="fa-solid ${priceDeltaIcon}"></i> ${priceDeltaSign}RM ${Math.abs(r.deltaPrice).toFixed(4)}/L
+                                    <span style="font-size:0.7rem;">(${priceDeltaSign}${Math.abs(r.deltaPriceRate).toFixed(2)}%)</span>
+                                </span>
+                            </span>
+                        </div>
+                        <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:0.7rem;color:#5f7390;">
+                            <span>成本：RM ${fmtComma(r.prevCost)} → <b>RM ${fmtComma(r.currCost)}</b></span>
+                            <span>油量：${fmtComma(r.prevLiter)} L → <b>${fmtComma(r.currLiter)} L</b></span>
+                            <span>油价：RM ${r.prevPrice.toFixed(4)} → <b>RM ${r.currPrice.toFixed(4)}</b></span>
+                        </div>
+                        <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:0.7rem;">
+                            <span style="color:${priceEffectColor};">油价影响：${priceSign}RM ${fmtComma(Math.abs(r.priceEffect))}</span>
+                            <span style="color:${volumeEffectColor};">油量影响：${volumeSign}RM ${fmtComma(Math.abs(r.volumeEffect))}</span>
+                            <span style="color:#8a9bb5;">交叉影响：${crossSign}RM ${fmtComma(Math.abs(r.crossEffect))}</span>
+                        </div>
+                    </li>`;
+                });
+
+                listEl.innerHTML = html;
+                updateMonitoringCostToggleUI();
+            }
+
             function openMonitoringVehicleModal() {
                 tempMonitoringVehicles = [...monitoringVehicles];
                 monitoringVehicleSearchTerm = '';
@@ -4533,7 +4697,6 @@
                     return;
                 }
 
-                // 排序：先分行，再车型
                 const sortedVehicles = [...filteredVehicles].sort((a, b) => {
                     const plantA = (a.plant || '-').toString();
                     const plantB = (b.plant || '-').toString();
@@ -4706,9 +4869,11 @@
                 monitoringCategories = [...MONITORING_CATEGORIES];
                 monitoringLineShow = { actual_fuel: true, fuel_expense: true };
                 monitoringRankType = 'actual_fuel_high';
+                monitoringCostType = 'rm';
                 monitoringYearSelector.value = '全部';
                 updateMonitoringLineToggleUI();
                 updateMonitoringRankToggleUI();
+                updateMonitoringCostToggleUI();
                 renderMonitoring();
                 showToast('已复原所有筛选条件', 'fa-undo');
             }
@@ -4777,6 +4942,7 @@
                 updateMonitoringRankToggleUI();
                 updateMonitoringPieChart(filteredVehicles, regular);
                 updateMonitoringLineToggleUI();
+                updateMonitoringCostPanel(filteredVehicles, regular);
                 if (monitoringVehicleModalVisible && monitoringData) renderMonitoringVehicleModalList();
                 if (monitoringPlantModalVisible && monitoringData) renderMonitoringPlantModalList();
                 if (monitoringTypeModalVisible && monitoringData) renderMonitoringTypeModalList();
@@ -4952,7 +5118,6 @@
                     renderFuelModalList(); });
                 modalClearFuel.addEventListener('click', clearFuelFilter);
                 modalConfirmFuel.addEventListener('click', applyFuelFilter);
-                // Summary 事件
                 summaryYearSelector.addEventListener('change', e => { summaryYear = e.target.value;
                     renderSummary(); });
                 summaryTableHead.addEventListener('change', e => {
@@ -5016,7 +5181,6 @@
                         summaryExpenseModalOverlay) closeSummaryExpenseModal(); });
                 summaryModalClearExpense.addEventListener('click', clearSummaryExpenseFilter);
                 summaryModalConfirmExpense.addEventListener('click', applySummaryExpenseFilter);
-                // Monitoring 事件
                 monitoringYearSelector.addEventListener('change', e => { monitoringYear = e.target.value;
                     renderMonitoring(); });
                 monitoringTableHead.addEventListener('change', e => {
@@ -5042,6 +5206,15 @@
                     monitoringRankType = btn.dataset.mrtype;
                     renderMonitoring();
                 });
+                const monitoringCostToggleGroup = document.getElementById('monitoringCostToggleGroup');
+                if (monitoringCostToggleGroup) {
+                    monitoringCostToggleGroup.addEventListener('click', e => {
+                        const btn = e.target.closest('.rank-toggle-btn');
+                        if (!btn) return;
+                        monitoringCostType = btn.dataset.mcost;
+                        renderMonitoring();
+                    });
+                }
                 monitoringStatCardVehicles.addEventListener('click', () => { if (monitoringData)
                         openMonitoringVehicleModal(); });
                 monitoringStatCardPlants.addEventListener('click', () => { if (monitoringData)
