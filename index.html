@@ -1104,6 +1104,14 @@
             font-weight: 400;
             color: #5f7c9e;
         }
+        .summary-val.liter {
+            color: #1f8b6b;
+        }
+        .summary-val.liter::after {
+            content: " L";
+            font-weight: 400;
+            color: #5f7c9e;
+        }
         /* 历史油价面板 */
         .fuel-price-row {
             display: flex;
@@ -1728,7 +1736,7 @@
     </div>
     <script>
         (function() {
-            const API_URL = 'https://script.google.com/macros/s/AKfycbwrcxMCh9Yv-HEATlxOidkSyK7n3G28LcsmVvyakqIWL6Z9yApNk1xe1bmdv8OF6pYo4A/exec';
+            const API_URL = 'https://script.google.com/macros/s/AKfycbx75WZqL0urQjP8Dut6PudPV9MbRATorR2O-tBAqgGe945mKKLXga097bh-ujQQ3NJQsQ/exec';
             const CATEGORIES = ['Shell', 'Petronas', 'Cash', 'Delta Swasta', 'Petron', 'Stesen Minyak Hakurun', 'Tangki'];
             const SUMMARY_CATEGORIES = ['Fuel Expense', 'Maintenance', 'Lubricant', 'Tyres', 'Charges', 'Others', 'Saman',
                 'Insurance'
@@ -4543,7 +4551,6 @@
                 let rows = (purchasePriceData && Array.isArray(purchasePriceData)) ? [...purchasePriceData] : [];
                 rows = filterFuelPriceByYear(rows);
 
-                // 按 START DATE 从旧到新排序（用于计算涨跌）
                 rows.sort((a, b) => {
                     const da = parseDate(a['START DATE']);
                     const db = parseDate(b['START DATE']);
@@ -4559,10 +4566,8 @@
                     return;
                 }
 
-                // 显示：从新到旧
                 const displayRows = [...rows].reverse();
 
-                // 顶部总览：显示最新阶段的涨跌
                 let latestSummaryHtml = '';
                 if (rows.length >= 1) {
                     const latest = rows[rows.length - 1];
@@ -4599,7 +4604,6 @@
                 }
                 summaryEl.innerHTML = latestSummaryHtml;
 
-                // 列表
                 let html = '';
                 displayRows.forEach((r) => {
                     const originalIdx = rows.indexOf(r);
@@ -4946,6 +4950,11 @@
                     return val || 0;
                 }
 
+                // 判断是否为 liter 类型
+                function isLiterCat(cat) {
+                    return cat === 'Actual Fuel Usage' || cat === 'Oil Transffered into Tangki';
+                }
+
                 const exportData = [];
                 const exportCats = monitoringCategories;
 
@@ -4984,7 +4993,12 @@
                     const row = [v.vehicle || '-', plant, type, v.fuel || '-'];
                     displayMonths.forEach(m => {
                         exportCats.forEach(cat => {
-                            row.push(getVal(v, m, cat));
+                            const num = getVal(v, m, cat);
+                            if (isLiterCat(cat)) {
+                                row.push(num.toFixed(2) + ' L');
+                            } else {
+                                row.push('RM ' + num.toFixed(2));
+                            }
                         });
                     });
                     exportData.push(row);
@@ -5045,7 +5059,12 @@
                     months.forEach(m => {
                         exportCats.forEach(cat => {
                             const sd = subtotalData && subtotalData[m] && subtotalData[m][cat];
-                            row.push(sd || 0);
+                            const num = sd || 0;
+                            if (isLiterCat(cat)) {
+                                row.push(num.toFixed(2) + ' L');
+                            } else {
+                                row.push('RM ' + num.toFixed(2));
+                            }
                         });
                     });
                     return row;
@@ -5055,10 +5074,20 @@
                     const row = [label, '', '', ''];
                     months.forEach(m => {
                         if (cat) {
-                            row.push(totalData && totalData[m] ? totalData[m] : 0);
+                            const num = (totalData && totalData[m]) ? totalData[m] : 0;
+                            if (isLiterCat(cat)) {
+                                row.push(num.toFixed(2) + ' L');
+                            } else {
+                                row.push('RM ' + num.toFixed(2));
+                            }
                         } else {
                             exportCats.forEach(c => {
-                                row.push(totalData && totalData[m] ? totalData[m] : 0);
+                                const num = (totalData && totalData[m]) ? totalData[m] : 0;
+                                if (isLiterCat(c)) {
+                                    row.push(num.toFixed(2) + ' L');
+                                } else {
+                                    row.push('RM ' + num.toFixed(2));
+                                }
                             });
                         }
                     });
@@ -5070,7 +5099,7 @@
 
                 const fixedCols = 4;
                 const colWidths = [{ wch: 18 }, { wch: 20 }, { wch: 20 }, { wch: 14 }];
-                displayMonths.forEach(m => { exportCats.forEach(cat => { colWidths.push({ wch: 12 }); }); });
+                displayMonths.forEach(m => { exportCats.forEach(cat => { colWidths.push({ wch: 14 }); }); });
                 ws['!cols'] = colWidths;
 
                 const merges = [];
@@ -5230,14 +5259,14 @@
                         MONITORING_CATEGORIES.forEach(cat => {
                             if (!monitoringCategories.includes(cat)) return;
                             const val = getMonitoringValue(v, m, cat);
-                            let displayVal = '';
+                            let valClass = '';
                             if (cat === 'Actual Fuel Usage' || cat === 'Oil Transffered into Tangki') {
-                                displayVal = fmtComma(val) + ' L';
+                                valClass = 'liter';
                             } else {
-                                displayVal = 'RM ' + fmtComma(val);
+                                valClass = 'expense';
                             }
                             body +=
-                                `<div class="summary-category-item"><span class="summary-cat-name">${cat}</span><span class="summary-val expense">${displayVal}</span></div>`;
+                                `<div class="summary-category-item"><span class="summary-cat-name">${cat}</span><span class="summary-val ${valClass}">${fmtComma(val)}</span></div>`;
                         });
                         body += `</td>`;
                     });
