@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Fuel Dashboard</title>
+    <link rel="icon" href="data:,">
     <style>
         * {
             margin: 0;
@@ -2010,7 +2011,26 @@
                 return parts.join('.');
             }
 
-            // ========== 缓存：兼容 file:// 环境（localStorage 可能被拦）==========
+            // ========== 通用：从类别数据中安全提取数字 ==========
+            function toNum(val) {
+                if (val == null) return 0;
+                if (typeof val === 'object') return Number(val.rm) || Number(val.liter) || 0;
+                return Number(val) || 0;
+            }
+
+            function toRM(val) {
+                if (val == null) return 0;
+                if (typeof val === 'object') return Number(val.rm) || 0;
+                return Number(val) || 0;
+            }
+
+            function toLiter(val) {
+                if (val == null) return 0;
+                if (typeof val === 'object') return Number(val.liter) || 0;
+                return 0;
+            }
+
+            // ========== 缓存（兼容 file:// 环境）==========
             let _memCache = null, _memCacheTime = 0;
 
             function getCache() {
@@ -2232,12 +2252,12 @@
                         if (!md) return;
                         calcCats.forEach(cat => {
                             const p = md[cat];
-                            if (p) { rmSum += p.rm || 0;
-                                literSum += p.liter || 0; }
+                            if (p) { rmSum += toRM(p);
+                                literSum += toLiter(p); }
                         });
                     });
-                    rmData.push(parseFloat(rmSum.toFixed(2)));
-                    literData.push(parseFloat(literSum.toFixed(2)));
+                    rmData.push(parseFloat(Number(rmSum).toFixed(2)));
+                    literData.push(parseFloat(Number(literSum).toFixed(2)));
                 });
                 const ctx = document.getElementById('trendChart');
                 if (!ctx) return;
@@ -2317,7 +2337,7 @@
                         if (md) {
                             calcCats.forEach(cat => {
                                 const p = md[cat];
-                                if (p) totalVal += rankType === 'rm' ? (p.rm || 0) : (p.liter || 0);
+                                if (p) totalVal += rankType === 'rm' ? toRM(p) : toLiter(p);
                             });
                         }
                     } else if (selectedYear !== '全部') {
@@ -2327,8 +2347,7 @@
                             if (md) {
                                 calcCats.forEach(cat => {
                                     const p = md[cat];
-                                    if (p) totalVal += rankType === 'rm' ? (p.rm || 0) : (p.liter ||
-                                        0);
+                                    if (p) totalVal += rankType === 'rm' ? toRM(p) : toLiter(p);
                                 });
                             }
                         });
@@ -2338,8 +2357,7 @@
                             if (md) {
                                 calcCats.forEach(cat => {
                                     const p = md[cat];
-                                    if (p) totalVal += rankType === 'rm' ? (p.rm || 0) : (p.liter ||
-                                        0);
+                                    if (p) totalVal += rankType === 'rm' ? toRM(p) : toLiter(p);
                                 });
                             }
                         });
@@ -2407,7 +2425,7 @@
                         calcCats.forEach(cat => {
                             const p = md[cat];
                             if (p) {
-                                catTotals[cat] += pieType === 'rm' ? (p.rm || 0) : (p.liter || 0);
+                                catTotals[cat] += pieType === 'rm' ? toRM(p) : toLiter(p);
                             }
                         });
                     });
@@ -2813,7 +2831,7 @@
                     if (!md) return 0;
                     const p = md[cat];
                     if (!p) return 0;
-                    return isRM ? (p.rm || 0) : (p.liter || 0);
+                    return isRM ? toRM(p) : toLiter(p);
                 }
 
                 const valueTypes = [];
@@ -3096,8 +3114,8 @@
                         if (!md) return;
                         calcCats.forEach(cat => {
                             const p = md[cat];
-                            if (p) { totalRM += p.rm || 0;
-                                totalLiter += p.liter || 0; }
+                            if (p) { totalRM += toRM(p);
+                                totalLiter += toLiter(p); }
                         });
                     });
                 });
@@ -3165,9 +3183,11 @@
                             CATEGORIES.forEach(cat => {
                                 if (!selectedCategories.includes(cat)) return;
                                 const p = md[cat];
-                                const rm = p ? fmtComma(p.rm) : '0.00';
-                                const lit = p ? fmtComma(p.liter) : '0.00';
-                                const hasVal = p && (p.rm || p.liter);
+                                const rmVal = toRM(p);
+                                const litVal = toLiter(p);
+                                const rm = fmtComma(rmVal);
+                                const lit = fmtComma(litVal);
+                                const hasVal = rmVal || litVal;
                                 if (!hasVal) {
                                     body +=
                                         `<div class="category-item"><span class="cat-name">${cat}</span><div class="val-row"><span style="color:#aaa;">—</span></div></div>`;
@@ -3264,17 +3284,15 @@
                 return result;
             }
 
-            // ✅ 修复点 1：兼容对象/字符串/数字
             function getSummaryValue(v, month, cat) {
                 const md = v.months[month];
                 if (!md) return 0;
                 const val = md[cat];
                 if (val == null) return 0;
-                if (typeof val === 'object') return Number(val.rm) || 0;
+                if (typeof val === 'object') return Number(val.rm) || Number(val.liter) || 0;
                 return Number(val) || 0;
             }
 
-            // ✅ 修复点 2：累加时强制转数字
             function getSummaryExpense(v, month) {
                 let total = 0;
                 EXPENSE_CATEGORIES.forEach(cat => {
@@ -3326,7 +3344,6 @@
 
                 EXPENSE_CATEGORIES.forEach((cat, i) => {
                     if (!summaryLineShow[cat]) return;
-                    // ✅ 修复点 3：sum 强制转数字
                     const data = sortedMonths.map(m => {
                         let sum = 0;
                         vehicles.forEach(v => { sum += Number(getSummaryValue(v, m, cat)) || 0; });
@@ -4168,7 +4185,14 @@
                 const md = v.months[month];
                 if (!md) return 0;
                 const val = md[cat];
-                return val || 0;
+                if (val == null) return 0;
+                if (typeof val === 'object') {
+                    if (cat === 'Actual Fuel Usage' || cat === 'Oil Transffered into Tangki') {
+                        return Number(val.liter) || Number(val.rm) || 0;
+                    }
+                    return Number(val.rm) || Number(val.liter) || 0;
+                }
+                return Number(val) || 0;
             }
 
             function updateMonitoringLineToggleUI() {
@@ -4216,8 +4240,8 @@
                 if (monitoringLineShow.actual_fuel) {
                     const data = sortedMonths.map(m => {
                         let sum = 0;
-                        vehicles.forEach(v => { sum += getMonitoringValue(v, m, 'Actual Fuel Usage'); });
-                        return parseFloat(sum.toFixed(2));
+                        vehicles.forEach(v => { sum += Number(getMonitoringValue(v, m, 'Actual Fuel Usage')) || 0; });
+                        return parseFloat(Number(sum).toFixed(2));
                     });
                     datasets.push({
                         label: 'Actual Fuel Usage',
@@ -4235,8 +4259,8 @@
                 if (monitoringLineShow.fuel_expense) {
                     const data = sortedMonths.map(m => {
                         let sum = 0;
-                        vehicles.forEach(v => { sum += getMonitoringValue(v, m, 'Fuel Expense'); });
-                        return parseFloat(sum.toFixed(2));
+                        vehicles.forEach(v => { sum += Number(getMonitoringValue(v, m, 'Fuel Expense')) || 0; });
+                        return parseFloat(Number(sum).toFixed(2));
                     });
                     datasets.push({
                         label: 'Fuel Expense',
@@ -4314,8 +4338,8 @@
                     let actualFuel = 0,
                         fuelExpense = 0;
                     monthsToUse.forEach(m => {
-                        actualFuel += getMonitoringValue(v, m, 'Actual Fuel Usage');
-                        fuelExpense += getMonitoringValue(v, m, 'Fuel Expense');
+                        actualFuel += Number(getMonitoringValue(v, m, 'Actual Fuel Usage')) || 0;
+                        fuelExpense += Number(getMonitoringValue(v, m, 'Fuel Expense')) || 0;
                     });
                     rankings.push({
                         vehicle: v.vehicle || '-',
@@ -4387,8 +4411,8 @@
                 const monthly = sortedMonths.map(m => {
                     let liter = 0, expense = 0;
                     vehicles.forEach(v => {
-                        liter += getMonitoringValue(v, m, 'Actual Fuel Usage');
-                        expense += getMonitoringValue(v, m, 'Fuel Expense');
+                        liter += Number(getMonitoringValue(v, m, 'Actual Fuel Usage')) || 0;
+                        expense += Number(getMonitoringValue(v, m, 'Fuel Expense')) || 0;
                     });
                     const price = liter > 0 ? expense / liter : 0;
                     return { month: m, liter, expense, price };
@@ -5210,9 +5234,9 @@
                     totalOilTransferred = 0;
                 filteredVehicles.forEach(v => {
                     filtered.forEach(m => {
-                        totalActualFuel += getMonitoringValue(v, m, 'Actual Fuel Usage');
-                        totalFuelExpense += getMonitoringValue(v, m, 'Fuel Expense');
-                        totalOilTransferred += getMonitoringValue(v, m, 'Oil Transffered into Tangki');
+                        totalActualFuel += Number(getMonitoringValue(v, m, 'Actual Fuel Usage')) || 0;
+                        totalFuelExpense += Number(getMonitoringValue(v, m, 'Fuel Expense')) || 0;
+                        totalOilTransferred += Number(getMonitoringValue(v, m, 'Oil Transffered into Tangki')) || 0;
                     });
                 });
                 monitoringStatActualFuel.textContent = fmtComma(totalActualFuel) + ' L';
