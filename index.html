@@ -1112,7 +1112,6 @@
             font-weight: 400;
             color: #5f7c9e;
         }
-        /* 历史油价面板 */
         .fuel-price-row {
             display: flex;
             align-items: flex-start;
@@ -1129,11 +1128,12 @@
         }
         .fuel-price-date {
             flex-shrink: 0;
-            width: 210px;
-            font-size: 0.72rem;
+            width: 100px;
+            font-size: 0.78rem;
             font-weight: 700;
             color: #1e3a5f;
             line-height: 1.4;
+            padding-top: 4px;
         }
         .fuel-price-date .date-sep {
             color: #8a9bb5;
@@ -1500,7 +1500,7 @@
             <div class="charts-row">
                 <div class="chart-panel" id="monitoringFuelPricePanel">
                     <div class="panel-title">
-                        <i class="fa-solid fa-tags"></i> 历史油价涨跌分析
+                        <i class="fa-solid fa-tags"></i> 历史油价涨跌分析（以月份为单位）
                     </div>
                     <div id="monitoringFuelPriceSummary" style="margin-bottom:12px;font-size:0.78rem;color:#4a5a6e;"></div>
                     <div id="monitoringFuelPriceList" style="max-height:420px;overflow-y:auto;padding-right:4px;"></div>
@@ -1736,7 +1736,7 @@
     </div>
     <script>
         (function() {
-            const API_URL = 'https://script.google.com/macros/s/AKfycbwrcxMCh9Yv-HEATlxOidkSyK7n3G28LcsmVvyakqIWL6Z9yApNk1xe1bmdv8OF6pYo4A/exec';
+            const API_URL = 'https://script.google.com/macros/s/AKfycbyIUJpb6dSKb4q56GzJkd2w7Q3b_eKodami9UF4I36hE3NWzYrWhvBNIdvCApvQ41ryNQ/exec';
             const CATEGORIES = ['Shell', 'Petronas', 'Cash', 'Delta Swasta', 'Petron', 'Stesen Minyak Hakurun', 'Tangki'];
             const SUMMARY_CATEGORIES = ['Fuel Expense', 'Maintenance', 'Lubricant', 'Tyres', 'Charges', 'Others', 'Saman',
                 'Insurance'
@@ -1746,7 +1746,7 @@
             ];
             const MONITORING_CATEGORIES = ['Actual Fuel Usage', 'Oil Transffered into Tangki', 'Fuel Expense'];
             const FUEL_PRICE_TYPES = ['RON 95', 'RON 97', 'DIESEL B7', 'DIESEL B10'];
-            const DIESEL_B10_SUBSIDY = 2.15;
+            const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const PIE_COLORS = ['#1f5f9e', '#1f8b6b', '#e6a817', '#8b5cf6', '#ef4444', '#06b6d4', '#f97316'];
             const SUMMARY_PIE_COLORS = ['#ef4444', '#f97316', '#e6a817', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16',
                 '#6366f1'
@@ -2010,17 +2010,25 @@
                 return parts.join('.');
             }
 
+            // ========== 缓存：兼容 file:// 环境（localStorage 可能被拦）==========
+            let _memCache = null, _memCacheTime = 0;
+
             function getCache() {
                 try {
                     const raw = localStorage.getItem(CACHE_KEY);
                     const time = localStorage.getItem(CACHE_TIME_KEY);
-                    return raw && time ? { data: JSON.parse(raw), timestamp: +time } : null;
-                } catch { return null; }
+                    if (raw && time) return { data: JSON.parse(raw), timestamp: +time };
+                } catch (e) {}
+                return _memCache ? { data: _memCache, timestamp: _memCacheTime } : null;
             }
 
             function setCache(data) {
-                try { localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-                    localStorage.setItem(CACHE_TIME_KEY, String(Date.now())); } catch {}
+                _memCache = data;
+                _memCacheTime = Date.now();
+                try {
+                    localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+                    localStorage.setItem(CACHE_TIME_KEY, String(Date.now()));
+                } catch (e) {}
             }
 
             function isCacheValid(cache) { return cache && Date.now() - cache.timestamp < CACHE_TTL; }
@@ -2072,8 +2080,7 @@
             function extractMonthAbbr(str) { return str.includes('-') ? str.split('-')[0] : str; }
 
             function monthSortKey(abbr) {
-                const order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                const idx = order.indexOf(abbr);
+                const idx = MONTH_ABBR.indexOf(abbr);
                 return idx >= 0 ? idx : 99;
             }
 
@@ -2180,9 +2187,7 @@
             function getChartMonths(allRegularMonths) {
                 const now = new Date();
                 const thisYear = String(now.getFullYear());
-                const thisMonthAbbr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][
-                    now.getMonth()
-                ];
+                const thisMonthAbbr = MONTH_ABBR[now.getMonth()];
                 if (selectedYear === '全部' || selectedYear === thisYear) {
                     const sorted = [...allRegularMonths].sort((a, b) => {
                         const ya = extractYear(a),
@@ -3259,18 +3264,22 @@
                 return result;
             }
 
+            // ✅ 修复点 1：兼容对象/字符串/数字
             function getSummaryValue(v, month, cat) {
                 const md = v.months[month];
                 if (!md) return 0;
                 const val = md[cat];
-                return val || 0;
+                if (val == null) return 0;
+                if (typeof val === 'object') return Number(val.rm) || 0;
+                return Number(val) || 0;
             }
 
+            // ✅ 修复点 2：累加时强制转数字
             function getSummaryExpense(v, month) {
                 let total = 0;
                 EXPENSE_CATEGORIES.forEach(cat => {
                     if (summaryCategories.includes(cat)) {
-                        total += getSummaryValue(v, month, cat);
+                        total += Number(getSummaryValue(v, month, cat)) || 0;
                     }
                 });
                 return total;
@@ -3317,10 +3326,11 @@
 
                 EXPENSE_CATEGORIES.forEach((cat, i) => {
                     if (!summaryLineShow[cat]) return;
+                    // ✅ 修复点 3：sum 强制转数字
                     const data = sortedMonths.map(m => {
                         let sum = 0;
-                        vehicles.forEach(v => { sum += getSummaryValue(v, m, cat); });
-                        return parseFloat(sum.toFixed(2));
+                        vehicles.forEach(v => { sum += Number(getSummaryValue(v, m, cat)) || 0; });
+                        return parseFloat(Number(sum).toFixed(2));
                     });
                     datasets.push({
                         label: cat,
@@ -3836,10 +3846,7 @@
                 });
 
                 function getVal(v, m, cat) {
-                    const md = v.months[m];
-                    if (!md) return 0;
-                    const val = md[cat];
-                    return val || 0;
+                    return getSummaryValue(v, m, cat);
                 }
 
                 const exportData = [];
@@ -4515,14 +4522,7 @@
                 listEl.innerHTML = html;
             }
 
-            // ==================== 历史油价涨跌分析 ====================
-            function formatDateDisplay(dateStr) {
-                if (!dateStr) return '-';
-                const parts = dateStr.split('-');
-                if (parts.length !== 3) return dateStr;
-                return parts[2] + '/' + parts[1] + '/' + parts[0];
-            }
-
+            // ==================== 历史油价涨跌分析（以月份为单位） ====================
             function parseDate(dateStr) {
                 if (!dateStr) return null;
                 const parts = dateStr.split('-');
@@ -4530,16 +4530,58 @@
                 return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
             }
 
-            function filterFuelPriceByYear(rows) {
-                if (monitoringYear === '全部') return rows;
-                const y = parseInt(monitoringYear);
-                return rows.filter(r => {
-                    const sd = parseDate(r['START DATE']);
-                    const ed = parseDate(r['END DATE']);
-                    if (!sd && !ed) return false;
-                    const sdYear = sd ? sd.getFullYear() : null;
-                    const edYear = ed ? ed.getFullYear() : null;
-                    return sdYear === y || edYear === y;
+            function getMonthsBetween(startDate, endDate) {
+                const months = [];
+                if (!startDate || !endDate) return months;
+                let sy = startDate.getFullYear();
+                let sm = startDate.getMonth();
+                const ey = endDate.getFullYear();
+                const em = endDate.getMonth();
+                while (sy < ey || (sy === ey && sm <= em)) {
+                    months.push(MONTH_ABBR[sm] + '-' + sy);
+                    sm++;
+                    if (sm > 11) { sm = 0; sy++; }
+                }
+                return months;
+            }
+
+            function buildMonthlyFuelPrice() {
+                const result = {};
+                if (!purchasePriceData || !Array.isArray(purchasePriceData)) return [];
+
+                purchasePriceData.forEach(row => {
+                    const sd = parseDate(row['START DATE']);
+                    const ed = parseDate(row['END DATE']);
+                    if (!sd || !ed) return;
+
+                    const months = getMonthsBetween(sd, ed);
+                    months.forEach(month => {
+                        if (!result[month]) {
+                            result[month] = {};
+                            FUEL_PRICE_TYPES.forEach(t => { result[month][t] = []; });
+                        }
+                        FUEL_PRICE_TYPES.forEach(t => {
+                            const v = Number(row[t]) || 0;
+                            result[month][t].push(v);
+                        });
+                    });
+                });
+
+                const monthKeys = Object.keys(result);
+                monthKeys.sort((a, b) => {
+                    const [am, ay] = a.split('-');
+                    const [bm, by] = b.split('-');
+                    if (ay !== by) return parseInt(by) - parseInt(ay);
+                    return MONTH_ABBR.indexOf(bm) - MONTH_ABBR.indexOf(am);
+                });
+
+                return monthKeys.map(month => {
+                    const avg = {};
+                    FUEL_PRICE_TYPES.forEach(t => {
+                        const arr = result[month][t];
+                        avg[t] = arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+                    });
+                    return { month, values: avg };
                 });
             }
 
@@ -4548,41 +4590,28 @@
                 const listEl = document.getElementById('monitoringFuelPriceList');
                 if (!summaryEl || !listEl) return;
 
-                let rows = (purchasePriceData && Array.isArray(purchasePriceData)) ? [...purchasePriceData] : [];
-                rows = filterFuelPriceByYear(rows);
+                const monthlyData = buildMonthlyFuelPrice();
 
-                rows.sort((a, b) => {
-                    const da = parseDate(a['START DATE']);
-                    const db = parseDate(b['START DATE']);
-                    if (!da && !db) return 0;
-                    if (!da) return 1;
-                    if (!db) return -1;
-                    return da - db;
-                });
-
-                if (rows.length === 0) {
-                    summaryEl.innerHTML = '<i class="fa-solid fa-circle-info"></i> 所选年份无油价数据';
+                if (monthlyData.length === 0) {
+                    summaryEl.innerHTML = '<i class="fa-solid fa-circle-info"></i> 暂无油价数据';
                     listEl.innerHTML = '<div class="rank-empty"><i class="fa-solid fa-box-open"></i> 暂无数据</div>';
                     return;
                 }
 
-                const displayRows = [...rows].reverse();
-
                 let latestSummaryHtml = '';
-                if (rows.length >= 1) {
-                    const latest = rows[rows.length - 1];
-                    const prev = rows.length >= 2 ? rows[rows.length - 2] : null;
+                if (monthlyData.length >= 1) {
+                    const latest = monthlyData[0];
+                    const prev = monthlyData.length >= 2 ? monthlyData[1] : null;
 
                     let items = [];
                     FUEL_PRICE_TYPES.forEach(type => {
-                        const curr = Number(latest[type]) || 0;
-                        let prevVal, compareLabel;
-                        if (type === 'DIESEL B10') {
-                            prevVal = DIESEL_B10_SUBSIDY;
-                            compareLabel = '补贴价 RM 2.15';
-                        } else {
-                            prevVal = prev ? (Number(prev[type]) || 0) : 0;
-                            compareLabel = prev ? '上一阶段' : '无对比';
+                        const curr = latest.values[type];
+                        const prevVal = prev ? prev.values[type] : null;
+                        if (prevVal === null) {
+                            items.push(`<span style="color:#8a9bb5;font-weight:600;">
+                                ${type}: <i class="fa-solid fa-minus"></i> 无对比
+                            </span>`);
+                            return;
                         }
                         const delta = curr - prevVal;
                         const rate = prevVal !== 0 ? (delta / prevVal) * 100 : 0;
@@ -4593,54 +4622,41 @@
                             ${type}:
                             <i class="fa-solid ${icon}"></i> ${delta >= 0 ? '+' : '-'}RM ${Math.abs(delta).toFixed(2)}
                             (${delta >= 0 ? '+' : '-'}${Math.abs(rate).toFixed(2)}%)
-                            <span style="font-size:0.65rem;color:#8a9bb5;font-weight:400;">vs ${compareLabel}</span>
                         </span>`);
                     });
                     latestSummaryHtml = `
                         <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
-                            <span style="font-weight:700;color:#1e3a5f;">最新阶段涨跌</span>
+                            <span style="font-weight:700;color:#1e3a5f;">${latest.month} vs ${prev ? prev.month : '-'}</span>
                             ${items.join('')}
                         </div>`;
                 }
                 summaryEl.innerHTML = latestSummaryHtml;
 
                 let html = '';
-                displayRows.forEach((r) => {
-                    const originalIdx = rows.indexOf(r);
-                    const prev = originalIdx > 0 ? rows[originalIdx - 1] : null;
-
-                    const startDisplay = formatDateDisplay(r['START DATE']);
-                    const endDisplay = formatDateDisplay(r['END DATE']);
+                monthlyData.forEach((m, idx) => {
+                    const prev = idx + 1 < monthlyData.length ? monthlyData[idx + 1] : null;
 
                     let itemsHtml = '';
                     FUEL_PRICE_TYPES.forEach(type => {
-                        const currVal = Number(r[type]) || 0;
+                        const currVal = m.values[type];
                         let deltaHtml = '';
-                        let prevVal, compareLabel;
-                        if (type === 'DIESEL B10') {
-                            prevVal = DIESEL_B10_SUBSIDY;
-                            compareLabel = '补贴价 RM 2.15';
-                        } else {
-                            prevVal = prev ? (Number(prev[type]) || 0) : null;
-                            compareLabel = prev ? '上一阶段' : null;
-                        }
-
-                        if (prevVal !== null) {
+                        if (prev) {
+                            const prevVal = prev.values[type];
                             const delta = currVal - prevVal;
                             const rate = prevVal !== 0 ? (delta / prevVal) * 100 : 0;
                             if (delta > 0) {
-                                deltaHtml = `<span class="fuel-price-delta up"><i class="fa-solid fa-arrow-up"></i> +RM ${Math.abs(delta).toFixed(2)} (+${Math.abs(rate).toFixed(2)}%) <span style="color:#8a9bb5;font-weight:400;font-size:0.6rem;">vs ${compareLabel}</span></span>`;
+                                deltaHtml = `<span class="fuel-price-delta up"><i class="fa-solid fa-arrow-up"></i> +RM ${Math.abs(delta).toFixed(2)} (+${Math.abs(rate).toFixed(2)}%)</span>`;
                             } else if (delta < 0) {
-                                deltaHtml = `<span class="fuel-price-delta down"><i class="fa-solid fa-arrow-down"></i> -RM ${Math.abs(delta).toFixed(2)} (-${Math.abs(rate).toFixed(2)}%) <span style="color:#8a9bb5;font-weight:400;font-size:0.6rem;">vs ${compareLabel}</span></span>`;
+                                deltaHtml = `<span class="fuel-price-delta down"><i class="fa-solid fa-arrow-down"></i> -RM ${Math.abs(delta).toFixed(2)} (-${Math.abs(rate).toFixed(2)}%)</span>`;
                             } else {
-                                deltaHtml = `<span class="fuel-price-delta flat"><i class="fa-solid fa-minus"></i> RM 0.00 (0.00%) <span style="color:#8a9bb5;font-weight:400;font-size:0.6rem;">vs ${compareLabel}</span></span>`;
+                                deltaHtml = `<span class="fuel-price-delta flat"><i class="fa-solid fa-minus"></i> RM 0.00 (0.00%)</span>`;
                             }
                         } else {
                             deltaHtml = `<span class="fuel-price-delta flat"><i class="fa-solid fa-minus"></i> 无对比</span>`;
                         }
                         itemsHtml += `
                             <div class="fuel-price-item">
-                                <span class="fuel-price-name">${type}${type==='DIESEL B10'?'<span class="fuel-price-badge">补贴价基准</span>':''}</span>
+                                <span class="fuel-price-name">${type}</span>
                                 <span class="fuel-price-val">${currVal.toFixed(2)}</span>
                                 ${deltaHtml}
                             </div>`;
@@ -4649,9 +4665,7 @@
                     html += `
                         <div class="fuel-price-row">
                             <div class="fuel-price-date">
-                                <i class="fa-regular fa-calendar"></i> ${startDisplay}
-                                <span class="date-sep"> ~ </span>
-                                ${endDisplay}
+                                <i class="fa-regular fa-calendar"></i> ${m.month}
                             </div>
                             <div class="fuel-price-grid">
                                 ${itemsHtml}
@@ -4944,13 +4958,9 @@
                 });
 
                 function getVal(v, m, cat) {
-                    const md = v.months[m];
-                    if (!md) return 0;
-                    const val = md[cat];
-                    return val || 0;
+                    return getMonitoringValue(v, m, cat);
                 }
 
-                // 判断是否为 liter 类型
                 function isLiterCat(cat) {
                     return cat === 'Actual Fuel Usage' || cat === 'Oil Transffered into Tangki';
                 }
